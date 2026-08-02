@@ -11,17 +11,30 @@ Usage:
 No API key required — Open Library's ISBN/Works/Authors endpoints are public.
 """
 
+from pathlib import Path
+
 import sqlite3
 import sys
 import requests
 
-DB_PATH = "library.db"
+# Windows terminals/consoles often default to cp1252, which can't encode
+# every character Open Library returns (accents, non-Latin scripts). Without
+# this, a print() of such a title/author crashes the whole request.
+try:
+    sys.stdout.reconfigure(errors="replace")
+except AttributeError:
+    pass
+
+# Ensure the database path is the file next to this script (project-local),
+# not the current working directory where the script is invoked from.
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "library.db"
 OPEN_LIBRARY_BASE = "https://openlibrary.org"
 
 
 def create_db(db_path: str = DB_PATH) -> None:
     """Create the books table if it doesn't already exist."""
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(str(db_path))
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS books (
@@ -96,9 +109,9 @@ def fetch_book_data(isbn: str) -> dict | None:
     }
 
 
-def insert_book(book: dict, db_path: str = DB_PATH) -> None:
-    """Insert a book dict into the database. Skips silently if ISBN already exists."""
-    conn = sqlite3.connect(db_path)
+def insert_book(book: dict, db_path: str = DB_PATH) -> bool:
+    """Insert a book dict into the database. Returns False (no-op) if ISBN already exists."""
+    conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
             """
@@ -109,8 +122,10 @@ def insert_book(book: dict, db_path: str = DB_PATH) -> None:
         )
         conn.commit()
         print(f"  -> saved: {book['title']} by {book['author']}")
+        return True
     except sqlite3.IntegrityError:
         print(f"  -> already in database (ISBN {book['isbn']}), skipped")
+        return False
     finally:
         conn.close()
 
