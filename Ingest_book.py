@@ -109,6 +109,43 @@ def fetch_book_data(isbn: str) -> dict | None:
     }
 
 
+def search_books_by_name(query: str, limit: int = 10) -> list[dict]:
+    """
+    Search Open Library by title/author text. Returns a list of lightweight
+    candidate dicts (title, author, year, isbn, cover_url) for the caller to
+    pick from — one still needs to go through fetch_book_data(isbn) to get
+    full details (genre, language) before inserting.
+    """
+    resp = requests.get(
+        f"{OPEN_LIBRARY_BASE}/search.json",
+        params={
+            "q": query,
+            "limit": limit,
+            "fields": "title,author_name,first_publish_year,isbn,cover_i",
+        },
+        timeout=10,
+    )
+    if resp.status_code != 200:
+        return []
+
+    results = []
+    for doc in resp.json().get("docs", []):
+        isbns = doc.get("isbn") or []
+        if not isbns:
+            continue  # nothing to key an insert on
+        cover_id = doc.get("cover_i")
+        results.append(
+            {
+                "title": doc.get("title", "Unknown title"),
+                "author": ", ".join(doc.get("author_name", [])) or "Unknown author",
+                "year": doc.get("first_publish_year", "Unknown"),
+                "isbn": isbns[0],
+                "cover_url": f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg" if cover_id else "",
+            }
+        )
+    return results
+
+
 def insert_book(book: dict, db_path: str = DB_PATH) -> bool:
     """Insert a book dict into the database. Returns False (no-op) if ISBN already exists."""
     conn = sqlite3.connect(str(db_path))
