@@ -14,8 +14,12 @@ Must be run from the same folder as library.db (the file ingest_book.py creates)
 from pathlib import Path
 
 import html
+import socket
 import sqlite3
+from io import BytesIO
+
 import pandas as pd
+import qrcode
 import streamlit as st
 
 from Ingest_book import create_db, fetch_book_data, insert_book, search_books_by_name
@@ -23,6 +27,33 @@ from Ingest_book import create_db, fetch_book_data, insert_book, search_books_by
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "library.db"
 GRID_COLUMNS = 5
+SERVER_PORT = 8501
+
+
+def get_lan_url() -> str:
+    """Best-guess LAN IP for this machine, so other devices on the same WiFi can reach the app."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except OSError:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return f"http://{ip}:{SERVER_PORT}"
+
+
+def render_network_access() -> None:
+    url = get_lan_url()
+    qr_img = qrcode.make(url)
+    buf = BytesIO()
+    qr_img.save(buf, format="PNG")
+
+    with st.sidebar:
+        st.subheader("View on another device")
+        st.caption("Scan on a phone/tablet connected to the same WiFi:")
+        st.image(buf.getvalue(), width=200)
+        st.code(url, language=None)
 
 GRID_STYLE = """
 <style>
@@ -97,6 +128,7 @@ def render_grid(books_df: pd.DataFrame) -> None:
 
 st.set_page_config(page_title="My library", layout="wide")
 st.title("My library")
+render_network_access()
 
 # Sentinel values fetch_book_data() falls back to when Open Library has no
 # data for a field — used to detect what's actually "undetermined".
